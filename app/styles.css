@@ -105,7 +105,7 @@ dialog.sheet form { padding: 0 16px 16px; }
 .btn-primary, .btn-secondary { display: block; width: 100%; text-align: center; border-radius: 12px; padding: 13px;
   font-weight: 600; text-decoration: none; cursor: pointer; }
 .btn-primary { background: var(--accent); color: #fff; border: none; }
-.btn-secondary { background: none; border: 1px solid var(--line); }
+.btn-secondary { background: none; border: 1px solid var(--line); color: var(--text); }
 
 /* поля форм */
 .field { margin: 14px 0; }

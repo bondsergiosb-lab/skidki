@@ -1,5 +1,5 @@
 // Оболочка приложения работает офлайн; данные о скидках — сначала из сети, без сети — последние сохранённые.
-const SHELL = "skidki-shell-v1";
+const SHELL = "skidki-shell-v2";
 const DATA = "skidki-data";
 const FILES = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest", "icons/icon-192.png"];
 

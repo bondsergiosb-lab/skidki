@@ -1,6 +1,12 @@
 # данные живут в ветке data (см. .github/workflows/daily.yml)
 app/data/
 data/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.p12
+*.jks
 __pycache__/
 *.pyc
 .venv/

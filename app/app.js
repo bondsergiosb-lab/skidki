@@ -406,6 +406,14 @@ $("#sort").addEventListener("change", e => { ui.sort = e.target.value; render();
 new IntersectionObserver(es => { if (es[0].isIntersecting && ui.shown < ui.list.length) more(); }, { rootMargin: "800px" })
   .observe($("#more"));
 
+// Кнопка «Назад» в Android-приложении: закрыть шторку → вернуться на экран скидок → выйти
+window.appBack = () => {
+  const open = document.querySelector("dialog[open]");
+  if (open) { open.close(); return true; }
+  if (!$("#view-deals").classList.contains("active")) { showView("deals"); return true; }
+  return false;
+};
+
 // ---------- запуск ----------
 async function load() {
   try {

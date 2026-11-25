@@ -1,0 +1,46 @@
+// Приложение-оболочка: показывает сайт со скидками (GitHub Pages) во встроенном браузере.
+// Собирается в GitHub Actions (.github/workflows/android.yml); ключ подписи приходит из секретов репозитория.
+plugins {
+    id 'com.android.application'
+}
+
+def env = System.getenv()
+def build = (env.VERSION_CODE ?: '1').toInteger()
+
+android {
+    namespace 'ua.skidki.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'ua.skidki.app'
+        minSdk 24
+        targetSdk 35
+        versionCode build
+        versionName "1.0.${build}"
+        resValue 'string', 'app_url', env.APP_URL ?: 'https://bondsergiosb-lab.github.io/skidki/'
+    }
+
+    signingConfigs {
+        release {
+            if (env.KEYSTORE_FILE) {
+                storeFile file(env.KEYSTORE_FILE)
+                storeType 'pkcs12'
+                storePassword env.KEYSTORE_PASSWORD
+                keyAlias 'skidki'
+                keyPassword env.KEYSTORE_PASSWORD
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

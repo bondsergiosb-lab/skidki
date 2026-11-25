@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#e8457a">
+  <title>Установить «Скидки»</title>
+  <meta property="og:title" content="Приложение «Скидки»">
+  <meta property="og:description" content="Проверенные скидки на одежду, обувь и аксессуары в магазинах Украины">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { max-width: 520px; margin: 0 auto; padding: 24px 18px 40px; }
+    .hero { text-align: center; margin-bottom: 22px; }
+    .hero img { width: 96px; height: 96px; border-radius: 22px; }
+    .hero h1 { font-size: 26px; margin: 12px 0 6px; }
+    ol { padding-left: 20px; }
+    ol li { margin: 12px 0; }
+    .note { font-size: 13px; color: var(--muted); }
+    .alt { margin-top: 26px; }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <img src="icons/icon-192.png" alt="">
+    <h1>Скидки</h1>
+    <div class="muted">Настоящие скидки на одежду, обувь и аксессуары — каждый день из магазинов Украины</div>
+  </div>
+
+  <a id="apk" class="btn-primary" href="#">Скачать приложение для Android</a>
+  <p class="note" style="text-align:center">Файл около 1 МБ. Приложение бесплатное, без рекламы и регистрации.</p>
+
+  <h3>Как установить</h3>
+  <ol>
+    <li>Нажмите <b>«Скачать приложение»</b>. Если Chrome предупредит, что файл может быть опасен, нажмите <b>«Всё равно скачать»</b>.</li>
+    <li>Откройте скачанный файл <b>skidki.apk</b> (из уведомления или из папки «Загрузки»).</li>
+    <li>Телефон попросит разрешить установку из этого источника — нажмите <b>«Настройки»</b>, включите
+      <b>«Разрешить из этого источника»</b> и вернитесь назад.</li>
+    <li>Нажмите <b>«Установить»</b>. Если появится окно Google Play Защиты — выберите <b>«Подробнее» → «Всё равно установить»</b>.
+      Предупреждение появляется потому, что приложение не из Play Маркета.</li>
+    <li>Готово — на экране появится иконка <b>«Скидки»</b>.</li>
+  </ol>
+  <p class="note">Обновлять приложение не нужно: скидки и новые функции подгружаются сами.</p>
+
+  <div class="alt">
+    <a class="btn-secondary" href="./">Открыть без установки</a>
+  </div>
+
+  <script>
+    // адрес вида https://ЛОГИН.github.io/РЕПОЗИТОРИЙ/install.html → последний релиз APK на GitHub
+    const owner = location.hostname.split(".")[0];
+    const repo = location.pathname.split("/")[1];
+    document.getElementById("apk").href = `https://github.com/${owner}/${repo}/releases/latest/download/skidki.apk`;
+  </script>
+</body>
+</html>

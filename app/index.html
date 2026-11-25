@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#e8457a">
+  <meta name="description" content="Настоящие скидки на одежду, обувь и аксессуары в магазинах Украины">
+  <title>Скидки</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-row">
+      <h1>Скидки</h1>
+      <span id="updated" class="muted"></span>
+    </div>
+    <div id="profiles" class="chips scroll"></div>
+  </header>
+
+  <main>
+    <!-- Скидки -->
+    <section id="view-deals" class="view active">
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="Поиск: кроссовки, Nike, платье…" autocomplete="off">
+        <button id="open-filters" class="btn-icon" aria-label="Фильтры">
+          <svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
+          <span id="filter-count" class="dot" hidden></span>
+        </button>
+      </div>
+      <div id="cats" class="chips scroll"></div>
+      <div id="subcats" class="chips scroll small"></div>
+      <div class="result-bar">
+        <span id="count" class="muted"></span>
+        <select id="sort" aria-label="Сортировка">
+          <option value="best">Лучшее для меня</option>
+          <option value="discount">Самая большая скидка</option>
+          <option value="cheap">Сначала дешёвые</option>
+          <option value="new">Сначала новые</option>
+        </select>
+      </div>
+      <div id="grid" class="grid"></div>
+      <div id="more" class="more"></div>
+      <p id="empty" class="empty" hidden>Ничего не нашлось. Попробуйте ослабить фильтры или выбрать другой профиль.</p>
+    </section>
+
+    <!-- Избранное -->
+    <section id="view-favs" class="view">
+      <h2>Избранное</h2>
+      <p class="muted">Сердечко на карточке сохраняет товар здесь. Если цена изменится — увидите старую и новую.</p>
+      <div id="fav-grid" class="grid"></div>
+      <p id="fav-empty" class="empty">Пока пусто.</p>
+    </section>
+
+    <!-- Настройки -->
+    <section id="view-settings" class="view">
+      <h2>Настройки</h2>
+      <div id="settings"></div>
+      <h3>Магазины</h3>
+      <div id="store-status"></div>
+      <h3>Как проверяются скидки</h3>
+      <div class="card-text">
+        <p>Каждый день приложение запоминает цену каждого товара. Скидка считается не от «старой цены», которую пишет магазин, а от цены, по которой товар реально продавался последние 60 дней.</p>
+        <ul class="legend"></ul>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom">
+    <button data-view="deals" class="active"><svg viewBox="0 0 24 24"><path d="M20 12l-8 8-9-9V3h8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>Скидки</button>
+    <button data-view="favs"><svg viewBox="0 0 24 24"><path d="M12 21s-8-5.3-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.7-8 11-8 11z"/></svg>Избранное</button>
+    <button data-view="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>Настройки</button>
+  </nav>
+
+  <!-- Фильтры -->
+  <dialog id="filters" class="sheet">
+    <form method="dialog">
+      <div class="sheet-head"><h2>Фильтры</h2><button class="btn-text" value="close">Готово</button></div>
+      <div id="filters-body"></div>
+      <div class="sheet-foot"><button type="button" id="reset-filters" class="btn-secondary">Сбросить к профилю</button></div>
+    </form>
+  </dialog>
+
+  <!-- Карточка товара -->
+  <dialog id="detail" class="sheet">
+    <form method="dialog">
+      <div class="sheet-head"><span></span><button class="btn-text" value="close">Закрыть</button></div>
+      <div id="detail-body"></div>
+    </form>
+  </dialog>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

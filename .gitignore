@@ -1,0 +1,6 @@
+# данные живут в ветке data (см. .github/workflows/daily.yml)
+app/data/
+data/
+__pycache__/
+*.pyc
+.venv/

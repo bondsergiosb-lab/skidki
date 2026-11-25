@@ -1,0 +1,69 @@
+name: Ежедневный сбор скидок
+
+on:
+  schedule:
+    - cron: "0 4 * * *"      # 04:00 UTC = 06:00 по Киеву зимой, 07:00 летом
+  workflow_dispatch:          # кнопка «Run workflow» — запустить вручную
+  push:
+    branches: [main]
+    paths: ["app/**"]         # изменили приложение — просто переопубликовать, без сбора
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: daily
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # История цен и последние скидки лежат в ветке data (одна перезаписываемая версия — репозиторий не растёт)
+      - name: Достать историю цен
+        run: |
+          mkdir -p data app/data
+          if git fetch --depth 1 origin data:data; then
+            git show data:history.json.gz > data/history.json.gz
+            git show data:deals.json > app/data/deals.json
+          fi
+
+      - uses: actions/setup-python@v5
+        if: github.event_name != 'push'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Собрать скидки
+        if: github.event_name != 'push'
+        run: |
+          pip install -r requirements.txt
+          python -m scraper.main
+
+      - name: Сохранить историю в ветку data
+        if: github.event_name != 'push'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          d=$(mktemp -d)
+          cp data/history.json.gz app/data/deals.json "$d"/
+          cd "$d"
+          git init -q -b data
+          git add .
+          git -c user.name="skidki-bot" -c user.email="skidki-bot@users.noreply.github.com" commit -qm "Данные за $(date -u +%F)"
+          git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app
+      - id: deployment
+        uses: actions/deploy-pages@v4

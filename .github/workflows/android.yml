@@ -46,6 +46,6 @@ jobs:
         run: |
           cp android/app/build/outputs/apk/release/app-release.apk skidki.apk
           gh release create "v1.0.${{ github.run_number }}" skidki.apk \
-            --title "Скидки 1.0.${{ github.run_number }}" \
-            --notes "Приложение «Скидки» для Android. Установка: страница install.html на сайте приложения." \
+            --title "Скидки для своих 1.0.${{ github.run_number }}" \
+            --notes "Приложение «Скидки для своих» для Android. Установка: страница install.html на сайте приложения." \
             --latest

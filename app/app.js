@@ -342,7 +342,7 @@ function renderNotify() {
     el.innerHTML = /SkidkiApp\//.test(navigator.userAgent)
       ? `<p>Чтобы каждое утро получать 20 самых горящих скидок, обновите приложение:
            <a href="install.html">скачайте новую версию</a> и установите поверх старой — настройки и избранное сохранятся.</p>`
-      : `<p>Ежедневные уведомления с горящими скидками приходят в Android-приложении «Скидки». <a href="install.html">Установить</a></p>`;
+      : `<p>Ежедневные уведомления с горящими скидками приходят в Android-приложении «Скидки для своих». <a href="install.html">Установить</a></p>`;
     return;
   }
   const options = [{ id: "", name: "Не присылать", emoji: "🔕" }, ...S.profiles];
@@ -351,7 +351,7 @@ function renderNotify() {
     <div class="field"><span class="label">Присылать на этот телефон для</span>
       <div class="checks">${options.map(p => `<label class="chip ${S.notify === p.id ? "on" : ""}">
         <input type="radio" hidden name="notify" value="${esc(p.id)}" ${S.notify === p.id ? "checked" : ""}>${esc(p.emoji)} ${esc(p.name)}</label>`).join("")}</div></div>
-    ${S.notify && !bridge.permissionGranted() ? `<p class="bad">Уведомления запрещены в настройках телефона — разрешите их для приложения «Скидки».</p>` : ""}
+    ${S.notify && !bridge.permissionGranted() ? `<p class="bad">Уведомления запрещены в настройках телефона — разрешите их для приложения «Скидки для своих».</p>` : ""}
     ${S.notify ? `<button type="button" id="notify-test" class="btn-secondary">Прислать сейчас (проверка)</button>` : ""}`;
 }
 window.renderNotify = renderNotify;  // Android вызывает после ответа на запрос разрешения

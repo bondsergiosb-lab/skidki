@@ -9,11 +9,15 @@
   infl  — старая цена завышена: недавно товар продавался без скидки примерно по текущей цене
   up    — за последние 30 дней было дешевле, чем сейчас
   perm  — «скидка» висит больше месяца без изменений
+  huge  — на маркетплейсе (старую цену пишет сам продавец) заявлено −85% и больше, и это ничем не подтверждено
 """
 from dataclasses import dataclass, field
 from statistics import median
 
 from .models import Item
+
+MARKETPLACES = {"kasta", "rozetka", "prom"}
+HUGE = 0.85
 
 
 @dataclass
@@ -64,6 +68,8 @@ def evaluate(item: Item, past: list[tuple[float, float]], prev_price: float | No
         if len(past) >= 30 and max(prices) <= p * 1.01 and min(prices) >= p * 0.99 and "ver" not in flags:
             flags.append("perm")
 
+    if item.store in MARKETPLACES and declared >= HUGE and "ver" not in flags:
+        flags.append("huge")
     if prev_price and p < prev_price * 0.98:
         flags.append("drop")
     if is_new and old:
@@ -71,5 +77,6 @@ def evaluate(item: Item, past: list[tuple[float, float]], prev_price: float | No
 
     real = max(0.0, 1 - p / ref) if ref > p else 0.0
     score = (real * 100 + 12 * ("low" in flags) + 8 * ("drop" in flags) + 6 * ("ver" in flags)
-             + 4 * ("new" in flags) - 25 * ("infl" in flags) - 10 * ("up" in flags) - 8 * ("perm" in flags))
+             + 4 * ("new" in flags) - 25 * ("infl" in flags) - 10 * ("up" in flags) - 8 * ("perm" in flags)
+             - 25 * ("huge" in flags))
     return Verdict(declared, real, ref, min60, len(past), flags, round(score, 1))

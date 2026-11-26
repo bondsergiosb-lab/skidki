@@ -2,6 +2,9 @@
 
 Цена акции приходит в CampaignBadges, а LowestPriceInLastMonth — минимальная цена за месяц,
 по ней проверяем, что скидка настоящая.
+
+robots.txt запрещает разделы распродажи (/mvc/…) и листание страниц (PageIndex=), поэтому берём
+первую страницу каждой женской и девичьей категории из меню главной — примерно половина товаров там со скидкой.
 """
 import json
 import re
@@ -10,11 +13,19 @@ from ..models import Item
 
 NAME = "LC Waikiki"
 SITE = "https://www.lcwaikiki.ua"
-# Отдельной распродажи для девочек у LCW нет (меню детских разделов грузится скриптом) — пока только женское
-SOURCES = [
-    ("/mvc/women-sales", "women"),
-]
-MAX_PAGES = 15
+MAX_CATEGORIES = 40
+
+
+def _categories(html: str) -> list[tuple[str, str]]:
+    found = {}
+    for path in re.findall(r'href="(/[a-z0-9\-]+-[tu]-\d+)"', html):
+        if "nemovl" in path or "khlop" in path or "cholov" in path:
+            continue
+        if "zhin" in path:
+            found.setdefault(path, "women")
+        elif "divch" in path:
+            found.setdefault(path, "girls")
+    return list(found.items())[:MAX_CATEGORIES]
 
 
 def _catalog(html: str) -> dict:
@@ -43,27 +54,30 @@ def _audience(gender: str, source: str) -> str:
 
 
 def scrape(http):
-    for path, source in SOURCES:
-        for page in range(1, MAX_PAGES + 1):
-            cat = _catalog(http.get(f"{SITE}{path}?PageIndex={page}"))
-            for x in cat["Items"]:
-                sale = _sale_price(x)
-                regular = float(x.get("PriceValue") or 0)
-                if not sale or not regular or sale >= regular:
-                    continue
-                crumbs = x.get("BreadCrump") or {}
-                yield Item(
-                    store="lcw",
-                    sku=str(x["OptionId"]),
-                    title=x.get("ProductDescription") or "",
-                    url=SITE + x["ModelUrl"],
-                    image=x.get("DefaultOptionImageUrl") or "",
-                    price=sale,
-                    old_price=regular,
-                    brand=x.get("Brand") or "LC Waikiki",
-                    path=" / ".join(filter(None, [x.get("Category"), crumbs.get("Level4")])),
-                    audience=_audience(x.get("Gender"), source),
-                    lowest_30d=x.get("LowestPriceInLastMonth") or None,
-                )
-            if page >= cat.get("PageCount", 1):
-                break
+    categories = _categories(http.get(SITE + "/"))
+    if not categories:
+        raise ValueError("в меню главной не нашли категорий — разметка сайта изменилась")
+    for path, source in categories:
+        html = http.get_optional(SITE + path)
+        if html is None:
+            continue
+        cat = _catalog(html)
+        for x in cat["Items"]:
+            sale = _sale_price(x)
+            regular = float(x.get("PriceValue") or 0)
+            if not sale or not regular or sale >= regular:
+                continue
+            crumbs = x.get("BreadCrump") or {}
+            yield Item(
+                store="lcw",
+                sku=str(x["OptionId"]),
+                title=x.get("ProductDescription") or "",
+                url=SITE + x["ModelUrl"],
+                image=x.get("DefaultOptionImageUrl") or "",
+                price=sale,
+                old_price=regular,
+                brand=x.get("Brand") or "LC Waikiki",
+                path=" / ".join(filter(None, [x.get("Category"), crumbs.get("Level4")])),
+                audience=_audience(x.get("Gender"), source),
+                lowest_30d=x.get("LowestPriceInLastMonth") or None,
+            )

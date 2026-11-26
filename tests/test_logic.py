@@ -5,6 +5,7 @@ from pathlib import Path
 from scraper.classify import audience, baby_only, categorize
 from scraper.history import History
 from scraper.models import Item
+from scraper.net import Robots
 from scraper.scoring import evaluate
 
 
@@ -56,6 +57,13 @@ def test_permanent_sale():
     assert "perm" in v.flags, v
 
 
+def test_huge_marketplace_discount():
+    fake = Item(store="rozetka", sku="1", title="x", url="", image="", price=4169, old_price=62000)
+    assert "huge" in evaluate(fake, [], None, False).flags
+    brand = Item(store="house", sku="1", title="x", url="", image="", price=199, old_price=1399)
+    assert "huge" not in evaluate(brand, [], None, False).flags   # у бренда старую цену пишет сам магазин
+
+
 def test_history_roundtrip():
     h, today = history([(100, 1000, 0), (105, 900, 1000)], 109)
     assert h.past("t:1", today) == [(1000, 0)] * 5 + [(900, 1000)] * 5
@@ -74,9 +82,24 @@ def test_classifier():
     assert audience("kids", "Шорти", "") == "kids"
     assert audience("", "Чоловіча куртка", "") is None
     assert audience("women", "Худі", "") == "women"
+    assert audience("", "Дитячі кеди Smash 3.0 Dino Sneakers Kids", "") is None
+    assert audience("", "Дитячі кросівки Carina Kids", "") == "kids"
+    assert audience("", "Кросівки Speedcat OG Unisex", "") == "unisex"
     assert baby_only(["74 (6-9 м)", "80 (9-12 м)"])
     assert not baby_only(["80 (9-12 м)", "146 (10-11 р)"])
     assert not baby_only(["S I UA 44"]) and not baby_only([])
+
+
+def test_robots():
+    r = Robots("User-agent: *\nAllow: /\nCrawl-delay: 10\nDisallow: /mvc/\nDisallow: /*PageIndex=*\nDisallow: /*?\n"
+               "Allow: /*offset=*\nDisallow: /x$\n\nUser-agent: Yandex\nDisallow: /\n")
+    assert not r.allowed("https://a.ua/mvc/women-sales")             # длинное правило побеждает «Allow: /»
+    assert not r.allowed("https://a.ua/women?PageIndex=2")
+    assert r.allowed("https://a.ua/market/odyag/?offset=50")          # Allow длиннее, чем «Disallow: /*?»
+    assert not r.allowed("https://a.ua/x") and r.allowed("https://a.ua/xy")
+    assert r.allowed("https://a.ua/zhinky-odyah-t-10")
+    assert r.crawl_delay == 10
+    assert Robots("").allowed("https://a.ua/anything")
 
 
 if __name__ == "__main__":

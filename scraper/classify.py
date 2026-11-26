@@ -38,6 +38,7 @@ GIRLS = re.compile(r"дівчат|дівчинк|девоч|для дівч|\bgi
 MEN = re.compile(r"чоловіч|мужск|для чоловіків|для мужчин|\bmen'?s?\b|\bman\b", re.I)
 BOYS = re.compile(r"хлопчик|мальчик|\bboys?\b", re.I)
 BABY = re.compile(r"немовл|новонарод|0-2|0-24|\bbaby\b|малюк", re.I)
+KIDS = re.compile(r"дитяч|детск|\bkids?\b|junior|\bjr\b", re.I)
 
 # Для детских товаров без указания пола (Sinsay так отдаёт всю детскую распродажу) — подсказки в названии
 GIRLISH = re.compile(r"сукн|плат|спідниц|юбк|легінс|лосин|рюш|оборк|мережив|бант|паєтк|блискіт|квітк|квітков|рожев|"
@@ -45,7 +46,7 @@ GIRLISH = re.compile(r"сукн|плат|спідниц|юбк|легінс|ло
                      r"cinnamoroll|pusheen|\blol\b|gabby|superkitties|care bears|demon hunters|wednesday|топ|блуз|"
                      r"бікіні|купальник|сердеч|метелик|леопард", re.I)
 BOYISH = re.compile(r"star wars|marvel|spider|людина-павук|batman|avengers|месники|hot wheels|brawl stars|sonic|"
-                    r"динозавр|машинк|трактор|футбольн|камуфляж|jurassic|transformers|ninjago|lego city", re.I)
+                    r"динозавр|\bdino|машинк|трактор|футбольн|камуфляж|jurassic|transformers|ninjago|lego city", re.I)
 
 
 _MONTHS = re.compile(r"\d\s*(м|міс|мес|m)\b", re.I)
@@ -86,7 +87,7 @@ def audience(hint: str, title: str, path: str) -> str | None:
         return "women"
     if MEN.search(text) or BOYS.search(text):
         return None
-    if hint == "kids":
+    if hint == "kids" or KIDS.search(text):  # магазин без детского раздела, но в названии «дитячі … Kids»
         if GIRLISH.search(title):
             return "girls"
         if BOYISH.search(text):

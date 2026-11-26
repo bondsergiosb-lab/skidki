@@ -16,18 +16,22 @@ const FLAGS = {
   infl: ["завышенная старая цена", "warn", "Недавно товар продавался без скидки почти по нынешней цене — «старая цена» нарисована. Такие товары по умолчанию скрыты."],
   up: ["уже было дешевле", "warn", "За последние 30 дней товар уже продавался по такой же или меньшей цене."],
   perm: ["давно по этой цене", "warn", "«Скидка» не меняется больше месяца — скорее всего, это обычная цена."],
+  huge: ["неправдоподобная скидка", "warn", "На маркетплейсе продавец сам пишет старую цену, а −85% и больше почти всегда означает нарисованную цену. Такие товары по умолчанию скрыты."],
 };
+const SUSPICIOUS = ["infl", "perm", "huge"];
 
 const DEFAULT_PROFILE = {
   name: "", emoji: "", audience: ["women", "unisex"], sizes: "", shoeSizes: "", cats: [],
   brandsFav: "", brandsHide: "", minDiscount: 30, maxPrice: 0, stores: [], onlySize: false, hideSuspicious: true,
 };
 const DEFAULT_PROFILES = [
-  { ...DEFAULT_PROFILE, id: "mom", name: "Мама", emoji: "👩" },
-  { ...DEFAULT_PROFILE, id: "big", name: "Старшая", emoji: "👱‍♀️" },
-  { ...DEFAULT_PROFILE, id: "small", name: "Младшие", emoji: "👧", audience: ["girls", "kids"],
+  { ...DEFAULT_PROFILE, id: "mom", name: "Ксюшику", emoji: "👩" },
+  { ...DEFAULT_PROFILE, id: "big", name: "Алюне", emoji: "👱‍♀️" },
+  { ...DEFAULT_PROFILE, id: "small", name: "Соне и Тоне", emoji: "👧", audience: ["girls", "kids"],
     sizes: "146, 152, 158, 11, 12", shoeSizes: "35, 36, 37", onlySize: true },
 ];
+// старые имена профилей по умолчанию → новые (у тех, кто установил раньше и не переименовывал сам)
+const RENAMED = { "Мама": "Ксюшику", "Старшая": "Алюне", "Младшие": "Соне и Тоне" };
 
 // ---------- состояние ----------
 const KEY = "skidki.v1";
@@ -37,11 +41,12 @@ const S = {
   active: saved.active ?? "all",
   favs: saved.favs || {},
 };
+for (const p of S.profiles) if (RENAMED[p.name]) p.name = RENAMED[p.name];
 const save = () => localStorage.setItem(KEY, JSON.stringify({ profiles: S.profiles, active: S.active, favs: S.favs }));
 
 let DATA = { items: [], stores: {} };
 let byId = new Map();
-const ui = { cat: "", sub: "", q: "", sort: "best", f: null, shown: 0, list: [] };
+const ui = { cat: "", sub: "", q: "", sort: "discount", f: null, shown: 0, list: [] };
 
 // ---------- утилиты ----------
 const $ = (s, el = document) => el.querySelector(s);
@@ -95,7 +100,7 @@ function passes(it, f, skipCat = false) {
   if (!skipCat && ui.sub && it.sc !== ui.sub) return false;
   if (it.r < f.minDiscount) return false;
   if (f.maxPrice && it.p > f.maxPrice) return false;
-  if (f.hideSuspicious && (it.f.includes("infl") || it.f.includes("perm"))) return false;
+  if (f.hideSuspicious && it.f.some(x => SUSPICIOUS.includes(x))) return false;
   if (f._hide.length && f._hide.includes(lower(it.b))) return false;
   if (f.onlySize && fits(it, f) === false) return false;
   if (ui.q) {
@@ -158,7 +163,7 @@ function cardHtml(it, extra = "") {
     <div class="body">
       <div class="price">${money(it.p)}${it.o ? `<s>${money(it.o)}</s>` : ""}</div>
       <div class="title">${esc(it.t)}</div>
-      <div class="meta">${esc(it.b)} · ${esc(DATA.stores[it.s]?.name || it.s)}</div>
+      <div class="meta">${[it.b, DATA.stores[it.s]?.name || it.s].filter(Boolean).map(esc).join(" · ")}</div>
       <div class="tags">${tagsHtml(it)}</div>
     </div></article>`;
 }
@@ -204,7 +209,7 @@ function openDetail(id) {
     <img class="detail-img" referrerpolicy="no-referrer" src="${esc(it.i)}" alt="">
     <div class="detail-price">${money(it.p)}${it.o ? `<s>${money(it.o)}</s>` : ""} ${it.r ? `<span class="badge" style="position:static">−${it.r}%</span>` : ""}</div>
     <div>${esc(it.t)}</div>
-    <div class="meta">${esc(it.b)} · ${esc(store)} · ${esc(SUBS[it.sc] || "")}</div>
+    <div class="meta">${[it.b, store, SUBS[it.sc]].filter(Boolean).map(esc).join(" · ")}</div>
     ${lines.length ? `<div class="explain">${lines.map(esc).join("<br>")}</div>` : ""}
     ${it.z && it.z.length ? `<div class="label">Размеры в наличии</div>
       <div class="sizes">${it.z.map(s => `<span class="${want.length && sizeMatch([s], want) ? "mine" : ""}">${esc(s)}</span>`).join("")}</div>`
@@ -329,11 +334,15 @@ function onSettingsInput(e) {
 }
 
 // ---------- переключение ----------
+function resetSort() {  // каждая категория открывается с самых больших реальных скидок
+  ui.sort = $("#sort").value = "discount";
+}
 function setProfile(id) {
   S.active = id;
   save();
   ui.f = prepareFilter(structuredClone(profile()));
   ui.cat = ui.sub = "";
+  resetSort();
   renderProfiles();
   render();
 }
@@ -354,9 +363,9 @@ document.addEventListener("click", e => {
   const prof = t.closest("#profiles [data-id]");
   if (prof) { setProfile(prof.dataset.id); return; }
   const cat = t.closest("[data-cat]");
-  if (cat) { ui.cat = cat.dataset.cat; ui.sub = ""; render(); return; }
+  if (cat) { ui.cat = cat.dataset.cat; ui.sub = ""; resetSort(); render(); return; }
   const sub = t.closest("[data-sub]");
-  if (sub) { ui.sub = sub.dataset.sub; render(); return; }
+  if (sub) { ui.sub = sub.dataset.sub; resetSort(); render(); return; }
   const nav = t.closest("nav.bottom button");
   if (nav) { showView(nav.dataset.view); return; }
   const card = t.closest(".item");

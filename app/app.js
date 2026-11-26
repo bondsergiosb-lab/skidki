@@ -21,7 +21,7 @@ const FLAGS = {
 const SUSPICIOUS = ["infl", "perm", "huge"];
 
 const DEFAULT_PROFILE = {
-  name: "", emoji: "", audience: ["women", "unisex"], sizes: "", shoeSizes: "", cats: [],
+  name: "", emoji: "", audience: ["women", "unisex"], sizes: "", shoeSizes: "", cats: [], subsFav: [],
   brandsFav: "", brandsHide: "", minDiscount: 30, maxPrice: 0, stores: [], onlySize: false, hideSuspicious: true,
 };
 const DEFAULT_PROFILES = [
@@ -40,13 +40,21 @@ const S = {
   profiles: saved.profiles || structuredClone(DEFAULT_PROFILES),
   active: saved.active ?? "all",
   favs: saved.favs || {},
+  notify: saved.notify || "",  // для какого профиля этот телефон получает ежедневное уведомление
 };
-for (const p of S.profiles) if (RENAMED[p.name]) p.name = RENAMED[p.name];
-const save = () => localStorage.setItem(KEY, JSON.stringify({ profiles: S.profiles, active: S.active, favs: S.favs }));
+for (const p of S.profiles) {
+  if (RENAMED[p.name]) p.name = RENAMED[p.name];
+  p.subsFav ||= [];
+}
+const save = () => localStorage.setItem(KEY, JSON.stringify({ profiles: S.profiles, active: S.active, favs: S.favs, notify: S.notify }));
+// Мост в Android-приложение (есть только в версии с уведомлениями)
+const bridge = window.SkidkiApp;
 
 let DATA = { items: [], stores: {} };
 let byId = new Map();
-const ui = { cat: "", sub: "", q: "", sort: "discount", f: null, shown: 0, list: [] };
+const ui = { cat: "", sub: "", q: "", sort: "discount", f: null, shown: 0, list: [], hot: [] };
+// из уведомления приложение открывается с адресом …#hot=id1,id2,…
+let pendingHot = location.hash.startsWith("#hot=") ? decodeURIComponent(location.hash.slice(5)) : "";
 
 // ---------- утилиты ----------
 const $ = (s, el = document) => el.querySelector(s);
@@ -68,7 +76,7 @@ function sizeMatch(itemSizes, wanted) {
   for (const s of itemSizes) {
     const toks = sizeTokens(s);
     // «(9-12 м)» — возраст в месяцах, не годы: диапазон не используем
-    const range = /\d\s*м\b|\d\s*мес|\d\s*m\b/i.test(s) ? null : s.match(/(\d+(?:[.,]\d+)?)\s*[-–]\s*(\d+(?:[.,]\d+)?)/);
+    const range = /\d\s*(м|мес|m)(?![a-zа-яіїєґ])/i.test(s) ? null : s.match(/(\d+(?:[.,]\d+)?)\s*[-–]\s*(\d+(?:[.,]\d+)?)/);
     for (const w of wanted) {
       if (toks.includes(w)) return true;
       if (range && /^\d+(\.\d+)?$/.test(w)) {
@@ -112,6 +120,7 @@ function passes(it, f, skipCat = false) {
 function personalScore(it, f) {
   let k = it.k;
   if (f._fav.includes(lower(it.b))) k += 25;
+  if ((f.subsFav || []).includes(it.sc)) k += 15;  // «больше всего интересует»
   if (it.a === "kids") k -= 5;  // явно «для девочек» — выше, чем детское без пола
   if (fits(it, f) === true) k += 8;
   return k;
@@ -275,7 +284,7 @@ function readFields(form, target) {
   target.maxPrice = +form.elements.maxPrice.value || 0;
   target.onlySize = form.elements.onlySize.checked;
   target.hideSuspicious = form.elements.hideSuspicious.checked;
-  for (const name of ["audience", "stores", "cats"]) {
+  for (const name of ["audience", "stores", "cats", "subsFav"]) {
     if (form.querySelector(`[name="${name}"]`)) target[name] = [...form.querySelectorAll(`[name="${name}"]:checked`)].map(x => x.value);
   }
 }
@@ -301,6 +310,8 @@ function renderSettings() {
           <input type="text" name="shoeSizes" value="${esc(p.shoeSizes)}" placeholder="например: 37, 37.5, 38"></div>
         <div class="field"><span class="label">Что интересно</span>${checks("cats", CATS, p.cats)}
           <div class="hint">Ничего не выбрано — все категории.</div></div>
+        <div class="field"><span class="label">Больше всего интересует</span>${checks("subsFav", SUBS, p.subsFav || [])}
+          <div class="hint">Эти вещи идут первыми в «Лучшее для меня» и в ежедневном уведомлении с горящими скидками.</div></div>
         <div class="field"><label>Любимые бренды (поднимаются выше)</label>
           <input type="text" name="brandsFav" value="${esc(p.brandsFav)}" placeholder="Nike, Adidas, Puma"></div>
         <div class="field"><label>Не показывать бренды</label>
@@ -316,7 +327,55 @@ function renderSettings() {
     <span class="${s.ok ? "ok" : "bad"}">${s.ok ? `${s.deals} скидок` : `не ответил, данные от ${s.stale_since ? new Date(s.stale_since).toLocaleDateString("ru-RU") : "—"}`}</span></div>`).join("")
     : `<p class="muted">Данные ещё не загружены.</p>`;
   $(".legend").innerHTML = Object.values(FLAGS).map(([t, cls, d]) => `<li><span class="tag ${cls}">${t}</span> ${esc(d)}</li>`).join("");
+  renderNotify();
 }
+
+// ---------- ежедневное уведомление (считает и показывает само Android-приложение) ----------
+function syncNotify() {
+  if (!bridge) return;
+  const p = S.profiles.find(x => x.id === S.notify);
+  bridge.setNotify(p ? JSON.stringify(p) : "");
+}
+function renderNotify() {
+  const el = $("#notify");
+  if (!bridge) {
+    el.innerHTML = /SkidkiApp\//.test(navigator.userAgent)
+      ? `<p>Чтобы каждое утро получать 20 самых горящих скидок, обновите приложение:
+           <a href="install.html">скачайте новую версию</a> и установите поверх старой — настройки и избранное сохранятся.</p>`
+      : `<p>Ежедневные уведомления с горящими скидками приходят в Android-приложении «Скидки». <a href="install.html">Установить</a></p>`;
+    return;
+  }
+  const options = [{ id: "", name: "Не присылать", emoji: "🔕" }, ...S.profiles];
+  el.innerHTML = `<p>Каждое утро, когда скидки обновятся, телефон пришлёт 20 самых горящих скидок для выбранного профиля —
+      с учётом размеров, фильтров, «больше всего интересует» и любимых брендов. Уже присланные не повторяются, пока не подешевеют.</p>
+    <div class="field"><span class="label">Присылать на этот телефон для</span>
+      <div class="checks">${options.map(p => `<label class="chip ${S.notify === p.id ? "on" : ""}">
+        <input type="radio" hidden name="notify" value="${esc(p.id)}" ${S.notify === p.id ? "checked" : ""}>${esc(p.emoji)} ${esc(p.name)}</label>`).join("")}</div></div>
+    ${S.notify && !bridge.permissionGranted() ? `<p class="bad">Уведомления запрещены в настройках телефона — разрешите их для приложения «Скидки».</p>` : ""}
+    ${S.notify ? `<button type="button" id="notify-test" class="btn-secondary">Прислать сейчас (проверка)</button>` : ""}`;
+}
+window.renderNotify = renderNotify;  // Android вызывает после ответа на запрос разрешения
+
+// ---------- горящие скидки из уведомления ----------
+function openHot() {
+  ui.hot = pendingHot.split(",").filter(Boolean);
+  pendingHot = "";
+  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+  showView("hot");
+}
+function renderHot() {
+  const items = ui.hot.map(id => byId.get(id)).filter(Boolean);
+  $("#hot-note").textContent = items.length ? `Из сегодняшнего уведомления — ${items.length}, от самой большой скидки.` : "";
+  $("#hot-grid").innerHTML = items.map(it => cardHtml(it)).join("");
+  $("#hot-empty").hidden = items.length > 0;
+}
+window.showHot = csv => {  // приложение уже открыто, а пользователь нажал на уведомление
+  pendingHot = csv;
+  if (DATA.items.length) openHot();
+};
+addEventListener("hashchange", () => {
+  if (location.hash.startsWith("#hot=")) window.showHot(decodeURIComponent(location.hash.slice(5)));
+});
 function onSettingsInput(e) {
   const card = e.target.closest("[data-pid]");
   if (!card) return;
@@ -329,6 +388,7 @@ function onSettingsInput(e) {
   if (out) out.textContent = p.minDiscount;
   card.querySelector("summary").textContent = `${p.emoji} ${p.name}`;
   save();
+  if (S.notify === p.id) syncNotify();
   renderProfiles();
   if (S.active === p.id) ui.f = prepareFilter(structuredClone(p));
 }
@@ -351,6 +411,7 @@ function showView(name) {
   document.querySelectorAll("nav.bottom button").forEach(b => b.classList.toggle("active", b.dataset.view === name));
   if (name === "favs") renderFavs();
   if (name === "settings") renderSettings();
+  if (name === "hot") renderHot();
   if (name === "deals") render();
   scrollTo(0, 0);
 }
@@ -368,6 +429,14 @@ document.addEventListener("click", e => {
   if (sub) { ui.sub = sub.dataset.sub; resetSort(); render(); return; }
   const nav = t.closest("nav.bottom button");
   if (nav) { showView(nav.dataset.view); return; }
+  const go = t.closest("[data-view-go]");
+  if (go) { showView(go.dataset.viewGo); return; }
+  if (t.id === "notify-test") {
+    bridge.sendNow();
+    t.textContent = "Готовлю уведомление — загляните в шторку через минуту";
+    t.disabled = true;
+    return;
+  }
   const card = t.closest(".item");
   if (card) { openDetail(card.dataset.id); return; }
   if (t.id === "open-filters" || t.closest("#open-filters")) { openFilters(); return; }
@@ -390,6 +459,7 @@ document.addEventListener("click", e => {
     if (S.profiles.length <= 1 || !confirm("Удалить профиль?")) return;
     S.profiles = S.profiles.filter(p => p.id !== t.dataset.del);
     if (S.active === t.dataset.del) S.active = "all";
+    if (S.notify === t.dataset.del) { S.notify = ""; syncNotify(); }
     save(); setProfile(S.active); renderSettings();
   }
 });
@@ -404,6 +474,13 @@ $("#filters").addEventListener("input", e => {
 });
 for (const d of document.querySelectorAll("dialog.sheet"))  // тап по затемнению закрывает шторку
   d.addEventListener("click", e => { if (e.target === d) d.close(); });
+$("#notify").addEventListener("change", e => {
+  if (e.target.name !== "notify") return;
+  S.notify = e.target.value;
+  save();
+  syncNotify();
+  renderNotify();
+});
 $("#settings").addEventListener("input", onSettingsInput);
 $("#settings").addEventListener("change", onSettingsInput);
 let qTimer;
@@ -437,6 +514,8 @@ async function load() {
     $("#updated").textContent = "обновлено " + d.toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   }
   setProfile(S.active);
+  syncNotify();  // после обновления приложения расписание уведомлений включится само
+  if (pendingHot) openHot();
 }
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 load();

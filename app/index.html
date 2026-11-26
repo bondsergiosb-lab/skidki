@@ -46,6 +46,15 @@
       <p id="empty" class="empty" hidden>Ничего не нашлось. Попробуйте ослабить фильтры или выбрать другой профиль.</p>
     </section>
 
+    <!-- Горящие: открывается из ежедневного уведомления -->
+    <section id="view-hot" class="view">
+      <h2>🔥 Горящие скидки</h2>
+      <p id="hot-note" class="muted"></p>
+      <div id="hot-grid" class="grid"></div>
+      <p id="hot-empty" class="empty" hidden>Этих скидок уже нет — магазины обновили цены.</p>
+      <button type="button" class="btn-secondary" data-view-go="deals">Все скидки</button>
+    </section>
+
     <!-- Избранное -->
     <section id="view-favs" class="view">
       <h2>Избранное</h2>
@@ -58,6 +67,8 @@
     <section id="view-settings" class="view">
       <h2>Настройки</h2>
       <div id="settings"></div>
+      <h3>Уведомления</h3>
+      <div id="notify" class="card-text"></div>
       <h3>Магазины</h3>
       <div id="store-status"></div>
       <h3>Как проверяются скидки</h3>

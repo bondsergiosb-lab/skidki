@@ -20,16 +20,19 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.Calendar;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Ежедневное уведомление «20 горящих скидок». Профиль приходит из страницы (Bridge.setNotify) и хранится здесь,
@@ -40,8 +43,8 @@ final class Notifier {
     static final int COUNT = 20;
     private static final String PREFS = "notify";
     private static final String CHANNEL = "hot";
-    private static final int HOUR = 9;               // скидки собираются к 6–7 утра по Киеву
-    private static final int MAX_RETRIES = 3;        // данные ещё не обновились — пробуем через 2 часа
+    private static final int HOUR = 9;               // скидки собираются ночью; GitHub иногда запаздывает
+    private static final int MAX_RETRIES = 5;        // данные ещё не обновились — пробуем через 2 часа, до 19:00
     private static final int MAX_SENT = 800;
     static final int JOB_DAILY = 1, JOB_NOW = 2, JOB_RETRY = 3;
 
@@ -97,7 +100,15 @@ final class Notifier {
         String profileJson = sp.getString("profile", "");
         if (profileJson.isEmpty()) return;
         JSONObject profile = new JSONObject(profileJson);
-        JSONObject data = new JSONObject(download(c.getString(R.string.app_url) + "data/deals.json"));
+        String base = c.getString(R.string.app_url) + "data/";
+        JSONObject data;
+        boolean whole = false;  // старый формат данных: всё одним файлом deals.json
+        try {
+            data = new JSONObject(download(base + "meta.json"));
+        } catch (FileNotFoundException e) {
+            data = new JSONObject(download(base + "deals.json"));
+            whole = true;
+        }
         String generated = data.optString("generated");
 
         if (!now && generated.equals(sp.getString("generated", ""))) {
@@ -109,8 +120,19 @@ final class Notifier {
             return;
         }
 
+        JSONArray items = whole ? data.getJSONArray("items") : new JSONArray();
+        if (!whole) {  // только части данных, нужные профилю: женское, мужское, детское
+            Set<String> ids = new HashSet<>();
+            for (String shard : Deals.shards(profile)) {
+                JSONArray part = new JSONObject(download(base + shard + ".json")).getJSONArray("items");
+                for (int i = 0; i < part.length(); i++) {
+                    JSONObject it = part.getJSONObject(i);
+                    if (ids.add(it.optString("id"))) items.put(it);
+                }
+            }
+        }
         Map<String, Double> sent = loadSent(sp);
-        List<JSONObject> hot = Deals.pick(data.getJSONArray("items"), profile, sent, COUNT);
+        List<JSONObject> hot = Deals.pick(items, profile, sent, COUNT);
         if (!now) sp.edit().putString("generated", generated).putInt("retries", 0).apply();
         if (hot.isEmpty()) {
             if (now) show(c, profile, hot, data);

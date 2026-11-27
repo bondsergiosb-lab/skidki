@@ -69,6 +69,18 @@ final class Deals {
         return out.subList(0, Math.min(limit, out.size()));
     }
 
+    /** Какие части данных нужны профилю (как SHARD_OF в app.js): w — женское и унисекс, m — мужское, k — детское. */
+    static List<String> shards(JSONObject p) {
+        Set<String> audience = set(p.optJSONArray("audience"));
+        List<String> out = new ArrayList<>();
+        if (audience.isEmpty()) return Arrays.asList("w", "m", "k");
+        // унисекс лежит и в женской, и в мужской части
+        if (audience.contains("women") || (audience.contains("unisex") && !audience.contains("men"))) out.add("w");
+        if (audience.contains("men")) out.add("m");
+        if (audience.contains("girls") || audience.contains("boys") || audience.contains("kids")) out.add("k");
+        return out;
+    }
+
     private static int priority(JSONObject it, Set<String> subsFav, Set<String> brandsFav) {
         return (subsFav.contains(it.optString("sc")) || brandsFav.contains(it.optString("b").toLowerCase(Locale.ROOT))) ? 1 : 0;
     }

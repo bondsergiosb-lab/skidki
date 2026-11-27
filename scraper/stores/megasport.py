@@ -8,7 +8,9 @@ NAME = "Megasport"
 SITE = "https://megasport.ua"
 SOURCES = [
     ("/ua/catalog/sections-all/female/outlet/", "women"),
+    ("/ua/catalog/sections-all/male/outlet/", "men"),
     ("/ua/catalog/sections-all/genders-all/outlet/child_gender-girls/", "girls"),
+    ("/ua/catalog/sections-all/genders-all/outlet/child_gender-boys/", "boys"),
 ]
 MAX_PAGES = 40
 
@@ -22,7 +24,7 @@ def _snapshot(html: str) -> dict[str, dict]:
 
 
 def _audience(p: dict, source: str) -> str:
-    if source == "girls":
+    if source in ("girls", "boys"):
         return {"girls": "girls", "boys": "boys"}.get(p.get("childGender"), "kids")
     return {"female": "women", "male": "men", "child": "kids"}.get(p.get("sex"), "unisex")
 

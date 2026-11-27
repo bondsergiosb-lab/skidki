@@ -19,7 +19,14 @@ CATEGORIES = [
     ("Zhenskie-bluzki", "women"),
     ("Zhenskie-kostyumy", "women"),
     ("Pizhamy-zhenskie", "women"),
+    ("Muzhskaya-verhnyaya-odezhda", "men"),
+    ("Muzhskie-dzhinsy", "men"),
+    ("Muzhskie-shtany", "men"),
+    ("Muzhskie-svitera-pulovery", "men"),
+    ("Futbolki-muzhskie", "men"),
+    ("Muzhskie-rubashki", "men"),
     ("Odezhda-dlya-devochek", "girls"),
+    ("Odezhda-dlya-malchikov", "boys"),
 ]
 PAGES = 3
 

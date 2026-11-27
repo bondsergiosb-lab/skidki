@@ -132,6 +132,11 @@ dialog.sheet form { padding: 0 16px 16px; }
 .store-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .ok { color: var(--good); } .bad { color: var(--warn); }
 
+/* первый запуск: пока нет профиля, показываем только настройку */
+.welcome { padding: 4px 14px 16px; margin-top: 8px; }
+.welcome form { margin-top: 6px; }
+.onboarding nav.bottom, .onboarding #profiles { display: none; }
+
 /* детальная карточка */
 .detail-img { width: 100%; max-height: 52vh; object-fit: contain; background: #eee; border-radius: 12px; }
 .detail-price { font-size: 24px; font-weight: 800; margin: 10px 0 2px; }

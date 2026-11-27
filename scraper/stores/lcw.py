@@ -4,7 +4,7 @@
 по ней проверяем, что скидка настоящая.
 
 robots.txt запрещает разделы распродажи (/mvc/…) и листание страниц (PageIndex=), поэтому берём
-первую страницу каждой женской и девичьей категории из меню главной — примерно половина товаров там со скидкой.
+первую страницу каждой категории из меню главной — примерно половина товаров там со скидкой.
 """
 import json
 import re
@@ -13,19 +13,22 @@ from ..models import Item
 
 NAME = "LC Waikiki"
 SITE = "https://www.lcwaikiki.ua"
-MAX_CATEGORIES = 40
+MAX_CATEGORIES = 30  # на каждый отдел
 
 
 def _categories(html: str) -> list[tuple[str, str]]:
     found = {}
     for path in re.findall(r'href="(/[a-z0-9\-]+-[tu]-\d+)"', html):
-        if "nemovl" in path or "khlop" in path or "cholov" in path:
+        if "nemovl" in path:
             continue
-        if "zhin" in path:
-            found.setdefault(path, "women")
-        elif "divch" in path:
-            found.setdefault(path, "girls")
-    return list(found.items())[:MAX_CATEGORIES]
+        for key, aud in (("zhin", "women"), ("divch", "girls"), ("khlop", "boys"), ("cholov", "men")):
+            if key in path:
+                found.setdefault(path, aud)
+                break
+    out = []
+    for aud in ("women", "men", "girls", "boys"):
+        out += [(p, a) for p, a in found.items() if a == aud][:MAX_CATEGORIES]
+    return out
 
 
 def _catalog(html: str) -> dict:
@@ -48,7 +51,9 @@ def _audience(gender: str, source: str) -> str:
         return "girls"
     if "жін" in g:
         return "women"
-    if "чолов" in g or "хлопч" in g:
+    if "хлопч" in g:
+        return "boys"
+    if "чолов" in g:
         return "men"
     return source
 

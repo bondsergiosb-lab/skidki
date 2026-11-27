@@ -1,0 +1,29 @@
+name: Уведомления в браузере и на iPhone
+
+on:
+  schedule:
+    # каждый час с 08:07 до 15:07 по Киеву (зимой): рассылка уходит один раз — как только готовы сегодняшние скидки
+    - cron: "7 6-13 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: push
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Разослать
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+        run: python -m scraper.push send

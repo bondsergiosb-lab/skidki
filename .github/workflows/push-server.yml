@@ -1,0 +1,48 @@
+name: Сервер уведомлений
+
+# Публикует worker/index.js на Cloudflare Workers (бесплатный тариф). Нужны секреты репозитория
+# CLOUDFLARE_API_TOKEN (шаблон «Edit Cloudflare Workers») и CLOUDFLARE_ACCOUNT_ID — см. README.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["worker/**"]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.CLOUDFLARE_API_TOKEN != ''
+      - uses: actions/setup-python@v5
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        with:
+          python-version: "3.12"
+      - name: Хранилище подписок и адрес
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: |
+          pip install -r requirements.txt
+          python -m scraper.push setup worker/wrangler.toml
+      - uses: actions/setup-node@v4
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        with:
+          node-version: "20"
+      - name: Опубликовать сервер
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: npx --yes wrangler@3 deploy --config worker/wrangler.toml
+      # сайту нужен адрес сервера (push.json) — переопубликовать без сбора скидок
+      - name: Обновить сайт
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run daily.yml --ref main -f only_deploy=true
+      - name: Cloudflare не подключён
+        if: env.CLOUDFLARE_API_TOKEN == ''
+        run: echo "::notice::Добавьте секреты CLOUDFLARE_API_TOKEN и CLOUDFLARE_ACCOUNT_ID (см. README) и запустите снова"

@@ -41,9 +41,10 @@ def make_scraper(store: str, site: str, sections: list[tuple[str, str]], brand: 
 
 
 SALE = re.compile(r"rozprodazh|discounted|(?<![a-z])sale(?![a-z])|black-friday|chorna-pyatnytsya")
-SKIP = re.compile(r"cholov|khlop|nemovl|/sales/|help|faq|guest|order|discount-codes")
-AUDIENCES = [("girls", re.compile(r"divchat|girls")), ("kids", re.compile(r"/dity|kids")),
-             ("women", re.compile(r"zhink|zhinky|women"))]
+SKIP = re.compile(r"nemovl|/sales/|help|faq|guest|order|discount-codes")
+AUDIENCES = [("girls", re.compile(r"divchat|girls")), ("boys", re.compile(r"khlop|boys")),
+             ("kids", re.compile(r"/dity|kids")), ("women", re.compile(r"zhink|zhinky|women")),
+             ("men", re.compile(r"cholov|(?<![a-z])men"))]
 
 
 def _sale_sections(html: str, default_audience: str) -> list[tuple[str, str]]:
@@ -103,10 +104,11 @@ def make_auto_scraper(store: str, site: str, brand: str, default_audience: str =
 
 
 RESERVED = make_auto_scraper("reserved", "https://www.reserved.com/ua/uk/", "Reserved")
-CROPP = make_auto_scraper("cropp", "https://www.cropp.com/ua/uk/", "Cropp")
-HOUSE = make_auto_scraper("house", "https://www.housebrand.com/ua/uk/", "House")
+# у Cropp и House мужского больше, чем женского: пол без подсказки раздела определит классификатор
+CROPP = make_auto_scraper("cropp", "https://www.cropp.com/ua/uk/", "Cropp", default_audience="")
+HOUSE = make_auto_scraper("house", "https://www.housebrand.com/ua/uk/", "House", default_audience="")
 MOHITO = make_auto_scraper("mohito", "https://www.mohito.com/ua/uk/", "Mohito", known=("/ua/uk/sale",))
 
 SINSAY = make_scraper("sinsay", "https://www.sinsay.com/ua/uk/",
-                      [("l-sale-all", "women"), ("k-sale-all", "kids")],
+                      [("l-sale-all", "women"), ("m-sale-all", "men"), ("k-sale-all", "kids")],
                       brand="Sinsay", sale_fallback="all/rozprodazh-do-50")

@@ -6,6 +6,7 @@ from scraper.classify import audience, baby_only, categorize
 from scraper.history import History
 from scraper.models import Item
 from scraper.net import Robots
+from scraper.push import message, pick, size_match
 from scraper.scoring import evaluate
 
 
@@ -78,11 +79,13 @@ def test_classifier():
     assert categorize("Светр жіночий трикотажний з коміром-поло", "Светри - Жінкам") == ("clothes", "knit")
     assert categorize("Тарілки, 2 шт.", "") is None
     assert audience("kids", "Плаття з оборкою", "") == "girls"
-    assert audience("kids", "Футболка Star Wars", "") is None
+    assert audience("kids", "Футболка Star Wars", "") == "boys"
     assert audience("kids", "Шорти", "") == "kids"
-    assert audience("", "Чоловіча куртка", "") is None
+    assert audience("", "Чоловіча куртка", "") == "men"
+    assert audience("", "Куртка для хлопчика", "") == "boys"
+    assert audience("", "Боді для немовлят", "") is None
     assert audience("women", "Худі", "") == "women"
-    assert audience("", "Дитячі кеди Smash 3.0 Dino Sneakers Kids", "") is None
+    assert audience("", "Дитячі кеди Smash 3.0 Dino Sneakers Kids", "") == "boys"
     assert audience("", "Дитячі кросівки Carina Kids", "") == "kids"
     assert audience("", "Кросівки Speedcat OG Unisex", "") == "unisex"
     assert baby_only(["74 (6-9 м)", "80 (9-12 м)"])
@@ -100,6 +103,23 @@ def test_robots():
     assert r.allowed("https://a.ua/zhinky-odyah-t-10")
     assert r.crawl_delay == 10
     assert Robots("").allowed("https://a.ua/anything")
+
+
+def test_push_pick():
+    def deal(i, a="women", r=50, sc="dresses", c="clothes", b="X", z=(), f=(), p=1000):
+        return {"id": f"s:{i}", "s": "s", "t": "t", "b": b, "a": a, "r": r, "k": r, "c": c, "sc": sc,
+                "z": list(z), "f": list(f), "p": p}
+    items = [deal(1, r=70), deal(2, a="men", r=90), deal(3, r=40, sc="boots", c="shoes"),
+             deal(4, r=60, z=["XS"]), deal(5, r=80, f=["infl"]), deal(6, r=20), deal(7, r=45, b="Nike")]
+    p = {"name": "Аня", "audience": ["women", "unisex"], "minDiscount": 30, "hideSuspicious": True,
+         "onlySize": True, "sizes": "M", "subsFav": ["boots"], "brandsFav": "nike"}
+    # мужское, сомнительная, слабая скидка и чужой размер — мимо; сапоги и Nike — первыми
+    assert [x["id"] for x in pick(items, p, {})] == ["s:7", "s:3", "s:1"]
+    # уже присылали — не повторяем, пока не подешевеет
+    assert [x["id"] for x in pick(items, p, {"s:7": 1000, "s:1": 1200})] == ["s:3", "s:1"]
+    assert size_match(["146 (10-11 р)"], ["11"]) and not size_match(["74 (6-9 м)"], ["7"])
+    msg = message(p, pick(items, p, {}), {}, "https://x/")
+    assert msg["title"] == "Аня, сегодня 3 горящие скидки 🔥" and msg["url"] == "https://x/#hot=s:7,s:3,s:1"
 
 
 if __name__ == "__main__":

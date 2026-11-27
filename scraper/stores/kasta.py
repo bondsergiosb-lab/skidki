@@ -16,8 +16,13 @@ CATEGORIES = [
     ("zhenskaya-obuv", "women"),
     ("zhenskie-aksessuary", "women"),
     ("sumki-i-ryukzaki", ""),
+    ("muzhskaya-odezhda", "men"),
+    ("muzhskaya-obuv", "men"),
+    ("muzhskie-aksessuary", "men"),
     ("odezhda-dlya-devochek", "girls"),
     ("obuv-dlya-devochek", "girls"),
+    ("odezhda-dlya-malchikov", "boys"),
+    ("obuv-dlya-malchikov", "boys"),
 ]
 PAGES = 6       # по 50 товаров
 PER_PAGE = 50

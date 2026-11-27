@@ -1,13 +1,18 @@
-// Скидки — приложение для просмотра проверенных скидок. Данные: data/deals.json (обновляется раз в день).
+// Скидки для своих — проверенные скидки. Данные: data/meta.json + части w/m/k.json (обновляются раз в день).
 
 const CATS = { clothes: "Одежда", shoes: "Обувь", bags: "Сумки", accessories: "Аксессуары" };
 const SUBS = {
-  outerwear: "Верхняя одежда", dresses: "Платья и юбки", knit: "Свитера и худи", tops: "Футболки и блузки",
-  bottoms: "Брюки и джинсы", suits: "Костюмы", underwear: "Бельё и пижамы", swim: "Купальники",
+  outerwear: "Верхняя одежда", dresses: "Платья и юбки", knit: "Свитера и худи", tops: "Футболки и рубашки",
+  bottoms: "Брюки и джинсы", suits: "Костюмы", underwear: "Бельё и пижамы", swim: "Купальники и плавки",
   sneakers: "Кроссовки и кеды", boots: "Ботинки и сапоги", shoes: "Туфли и босоножки", slippers: "Тапочки",
   bags: "Сумки и рюкзаки", accessories: "Шапки, шарфы и др.",
 };
-const AUD = { women: "Женское", girls: "Для девочек", kids: "Детское (пол не указан)", unisex: "Унисекс" };
+const AUD = {
+  women: "Женское", men: "Мужское", girls: "Для девочек", boys: "Для мальчиков",
+  kids: "Детское (пол не указан)", unisex: "Унисекс",
+};
+// В какой части данных лежат товары для кого (унисекс есть и в женской, и в мужской — берём ту, что уже нужна)
+const SHARD_OF = { women: "w", unisex: "w", men: "m", girls: "k", boys: "k", kids: "k" };
 const FLAGS = {
   ver: ["✓ проверено", "", "Скидка подтверждена: товар действительно продавался по старой цене."],
   low: ["мин. цена за 60 дн", "", "Самая низкая цена за всё время наблюдений (до 60 дней)."],
@@ -24,12 +29,13 @@ const DEFAULT_PROFILE = {
   name: "", emoji: "", audience: ["women", "unisex"], sizes: "", shoeSizes: "", cats: [], subsFav: [],
   brandsFav: "", brandsHide: "", minDiscount: 30, maxPrice: 0, stores: [], onlySize: false, hideSuspicious: true,
 };
-const DEFAULT_PROFILES = [
-  { ...DEFAULT_PROFILE, id: "mom", name: "Ксюшику", emoji: "👩" },
-  { ...DEFAULT_PROFILE, id: "big", name: "Алюне", emoji: "👱‍♀️" },
-  { ...DEFAULT_PROFILE, id: "small", name: "Соне и Тоне", emoji: "👧", audience: ["girls", "kids"],
-    sizes: "146, 152, 158, 11, 12", shoeSizes: "35, 36, 37", onlySize: true },
-];
+// Первый запуск: для кого ищем скидки
+const PRESETS = {
+  women: { label: "Женское — для себя", emoji: "👩", name: "Я", audience: ["women", "unisex"] },
+  men: { label: "Мужское — для себя", emoji: "👨", name: "Я", audience: ["men", "unisex"] },
+  girls: { label: "Для дочери", emoji: "👧", name: "Дочь", audience: ["girls", "kids"], onlySize: true },
+  boys: { label: "Для сына", emoji: "👦", name: "Сын", audience: ["boys", "kids"], onlySize: true },
+};
 // старые имена профилей по умолчанию → новые (у тех, кто установил раньше и не переименовывал сам)
 const RENAMED = { "Мама": "Ксюшику", "Старшая": "Алюне", "Младшие": "Соне и Тоне" };
 
@@ -37,21 +43,29 @@ const RENAMED = { "Мама": "Ксюшику", "Старшая": "Алюне", 
 const KEY = "skidki.v1";
 const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
 const S = {
-  profiles: saved.profiles || structuredClone(DEFAULT_PROFILES),
-  active: saved.active ?? "all",
+  profiles: saved.profiles || [],
+  active: saved.active ?? "",
   favs: saved.favs || {},
   notify: saved.notify || "",  // для какого профиля этот телефон получает ежедневное уведомление
+  device: saved.device || crypto.randomUUID(),  // номер подписки на уведомления в браузере
+  pushSig: saved.pushSig || "",  // что последним отправили на сервер уведомлений
 };
 for (const p of S.profiles) {
   if (RENAMED[p.name]) p.name = RENAMED[p.name];
   p.subsFav ||= [];
 }
-const save = () => localStorage.setItem(KEY, JSON.stringify({ profiles: S.profiles, active: S.active, favs: S.favs, notify: S.notify }));
+const save = () => localStorage.setItem(KEY, JSON.stringify({
+  profiles: S.profiles, active: S.active, favs: S.favs, notify: S.notify, device: S.device, pushSig: S.pushSig,
+}));
 // Мост в Android-приложение (есть только в версии с уведомлениями)
 const bridge = window.SkidkiApp;
+// Сервер уведомлений для браузера и iPhone (push.json пишется при публикации сайта)
+let PUSH = {};
 
 let DATA = { items: [], stores: {} };
 let byId = new Map();
+const loaded = new Set();  // загруженные части данных
+let wholeFile = false;     // старый формат: всё в deals.json
 const ui = { cat: "", sub: "", q: "", sort: "discount", f: null, shown: 0, list: [], hot: [] };
 // из уведомления приложение открывается с адресом …#hot=id1,id2,…
 let pendingHot = location.hash.startsWith("#hot=") ? decodeURIComponent(location.hash.slice(5)) : "";
@@ -65,10 +79,21 @@ const lower = s => s.toLowerCase();
 const sizeTokens = s => s.toUpperCase().replace(/,/g, ".").split(/[^0-9A-ZА-ЯІЇЄҐ.]+/).filter(Boolean);
 const EPOCH = Date.UTC(2024, 0, 1);
 const dayToDate = d => new Date(EPOCH + d * 864e5).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const standalone = navigator.standalone || matchMedia("(display-mode: standalone)").matches;
+async function fetchJson(url) {
+  const r = await fetch(url, { cache: "no-cache" });
+  if (!r.ok) throw new Error(`${url}: ${r.status}`);
+  return r.json();
+}
 
 function profile() {
-  if (S.active === "all") return { ...DEFAULT_PROFILE, id: "all", audience: [], minDiscount: 10 };
-  return S.profiles.find(p => p.id === S.active) || S.profiles[0];
+  if (S.active === "all") {
+    // «Все» — все профили сразу: для кого — объединение, минимальная скидка — самая мягкая
+    const auds = S.profiles.some(p => !p.audience.length) ? [] : [...new Set(S.profiles.flatMap(p => p.audience))];
+    return { ...DEFAULT_PROFILE, id: "all", audience: auds, minDiscount: 10 };
+  }
+  return S.profiles.find(p => p.id === S.active) || S.profiles[0] || { ...DEFAULT_PROFILE, id: "" };
 }
 
 // Подходит ли размер: «S» найдёт «S I UA 44», «11» найдёт «146 (10-11 р)» и «10-12», «152» найдёт «150-155»
@@ -100,17 +125,22 @@ function fits(it, f) {
 }
 
 // ---------- фильтрация и сортировка ----------
-function passes(it, f, skipCat = false) {
+// Фильтры профиля. Те же правила — в уведомлениях: Deals.java (Android) и scraper/push.py (браузер, iPhone).
+function matches(it, f) {
   if (f.audience.length && !f.audience.includes(it.a)) return false;
   if (f.stores.length && !f.stores.includes(it.s)) return false;
   if (f.cats.length && !f.cats.includes(it.c)) return false;
-  if (!skipCat && ui.cat && it.c !== ui.cat) return false;
-  if (!skipCat && ui.sub && it.sc !== ui.sub) return false;
   if (it.r < f.minDiscount) return false;
   if (f.maxPrice && it.p > f.maxPrice) return false;
   if (f.hideSuspicious && it.f.some(x => SUSPICIOUS.includes(x))) return false;
   if (f._hide.length && f._hide.includes(lower(it.b))) return false;
   if (f.onlySize && fits(it, f) === false) return false;
+  return true;
+}
+function passes(it, f, skipCat = false) {
+  if (!matches(it, f)) return false;
+  if (!skipCat && ui.cat && it.c !== ui.cat) return false;
+  if (!skipCat && ui.sub && it.sc !== ui.sub) return false;
   if (ui.q) {
     const hay = it._hay || (it._hay = lower(`${it.t} ${it.b} ${DATA.stores[it.s]?.name || ""} ${SUBS[it.sc] || ""}`));
     if (!ui.q.split(/\s+/).every(w => hay.includes(w))) return false;
@@ -121,7 +151,7 @@ function personalScore(it, f) {
   let k = it.k;
   if (f._fav.includes(lower(it.b))) k += 25;
   if ((f.subsFav || []).includes(it.sc)) k += 15;  // «больше всего интересует»
-  if (it.a === "kids") k -= 5;  // явно «для девочек» — выше, чем детское без пола
+  if (it.a === "kids") k -= 5;  // явно «для девочек/мальчиков» — выше, чем детское без пола
   if (fits(it, f) === true) k += 8;
   return k;
 }
@@ -134,12 +164,39 @@ const SORTS = {
 function prepareFilter(f) {
   return { ...f, _fav: list(f.brandsFav).map(lower), _hide: list(f.brandsHide).map(lower) };
 }
+// Горящие скидки для уведомления: «больше всего интересует» и любимые бренды первыми, внутри — по реальной скидке
+function pickHot(p, limit = 20) {
+  const f = prepareFilter(structuredClone(p));
+  const pri = it => (f.subsFav || []).includes(it.sc) || f._fav.includes(lower(it.b)) ? 1 : 0;
+  return DATA.items.filter(it => matches(it, f))
+    .sort((a, b) => pri(b) - pri(a) || b.r - a.r || b.k - a.k).slice(0, limit);
+}
+
+// ---------- данные ----------
+function shardsFor(profiles) {
+  if (wholeFile) return [];
+  if (!profiles.length || profiles.some(p => !p.audience.length)) return ["w", "m", "k"];
+  return [...new Set(profiles.flatMap(p => {
+    const s = p.audience.filter(a => a !== "unisex").map(a => SHARD_OF[a]).filter(Boolean);
+    return p.audience.includes("unisex") && !s.includes("w") && !s.includes("m") ? [...s, "w"] : s;
+  }))];
+}
+async function ensureData(profiles = S.profiles) {
+  const need = shardsFor(profiles).filter(s => !loaded.has(s));
+  if (!need.length) return;
+  const parts = await Promise.all(need.map(s => fetchJson(`data/${s}.json`)));
+  parts.forEach((part, i) => {
+    loaded.add(need[i]);
+    for (const it of part.items) if (!byId.has(it.id)) { byId.set(it.id, it); DATA.items.push(it); }
+  });
+  DATA.items.sort((a, b) => b.k - a.k);
+}
 
 // ---------- отрисовка ----------
 function renderProfiles() {
-  const chips = [{ id: "all", name: "Все", emoji: "✨" }, ...S.profiles];
+  const chips = [...(S.profiles.length > 1 ? [{ id: "all", name: "Все", emoji: "✨" }] : []), ...S.profiles];
   $("#profiles").innerHTML = chips.map(p =>
-    `<button class="chip ${p.id === S.active ? "on" : ""}" data-id="${esc(p.id)}">${esc(p.emoji)} ${esc(p.name)}</button>`).join("");
+    `<button class="chip ${p.id === profile().id ? "on" : ""}" data-id="${esc(p.id)}">${esc(p.emoji)} ${esc(p.name)}</button>`).join("");
 }
 function renderCats(f) {
   const cc = {}, sc = {};
@@ -162,6 +219,10 @@ function tagsHtml(it, max = 2) {
   return it.f.filter(x => FLAGS[x]).slice(0, max)
     .map(x => `<span class="tag ${FLAGS[x][1]}">${FLAGS[x][0]}</span>`).join("");
 }
+function brandAndStore(it) {  // «House · House» → «House»
+  const store = DATA.stores[it.s]?.name || it.s;
+  return it.b && lower(it.b) !== lower(store) ? [it.b, store] : [store];
+}
 function cardHtml(it, extra = "") {
   const fav = S.favs[it.id] ? "on" : "";
   return `<article class="item ${extra}" data-id="${esc(it.id)}">
@@ -172,7 +233,7 @@ function cardHtml(it, extra = "") {
     <div class="body">
       <div class="price">${money(it.p)}${it.o ? `<s>${money(it.o)}</s>` : ""}</div>
       <div class="title">${esc(it.t)}</div>
-      <div class="meta">${[it.b, DATA.stores[it.s]?.name || it.s].filter(Boolean).map(esc).join(" · ")}</div>
+      <div class="meta">${brandAndStore(it).map(esc).join(" · ")}</div>
       <div class="tags">${tagsHtml(it)}</div>
     </div></article>`;
 }
@@ -218,7 +279,7 @@ function openDetail(id) {
     <img class="detail-img" referrerpolicy="no-referrer" src="${esc(it.i)}" alt="">
     <div class="detail-price">${money(it.p)}${it.o ? `<s>${money(it.o)}</s>` : ""} ${it.r ? `<span class="badge" style="position:static">−${it.r}%</span>` : ""}</div>
     <div>${esc(it.t)}</div>
-    <div class="meta">${[it.b, store, SUBS[it.sc]].filter(Boolean).map(esc).join(" · ")}</div>
+    <div class="meta">${[...brandAndStore(it), SUBS[it.sc]].filter(Boolean).map(esc).join(" · ")}</div>
     ${lines.length ? `<div class="explain">${lines.map(esc).join("<br>")}</div>` : ""}
     ${it.z && it.z.length ? `<div class="label">Размеры в наличии</div>
       <div class="sizes">${it.z.map(s => `<span class="${want.length && sizeMatch([s], want) ? "mine" : ""}">${esc(s)}</span>`).join("")}</div>`
@@ -260,9 +321,9 @@ function renderFavs() {
 }
 
 // ---------- фильтры (шторка) ----------
-function checks(name, options, selected) {
+function checks(name, options, selected, type = "checkbox") {
   return `<div class="checks">${Object.entries(options).map(([k, v]) =>
-    `<label class="chip ${selected.includes(k) ? "on" : ""}"><input type="checkbox" hidden name="${name}" value="${esc(k)}" ${selected.includes(k) ? "checked" : ""}>${esc(v)}</label>`).join("")}</div>`;
+    `<label class="chip ${selected.includes(k) ? "on" : ""}"><input type="${type}" hidden name="${name}" value="${esc(k)}" ${selected.includes(k) ? "checked" : ""}>${esc(v)}</label>`).join("")}</div>`;
 }
 function filterFields(f, prefix) {
   const stores = Object.fromEntries(Object.entries(DATA.stores).map(([k, v]) => [k, v.name]));
@@ -292,6 +353,54 @@ function openFilters() {
   $("#filters-body").innerHTML = filterFields(ui.f, "flt-") +
     (S.active !== "all" ? `<div class="sheet-foot"><button type="button" id="save-to-profile" class="btn-secondary">Сохранить в профиль «${esc(profile().name)}»</button></div>` : "");
   $("#filters").showModal();
+}
+
+// ---------- первый запуск и новый профиль ----------
+function renderWelcome() {
+  const first = !S.profiles.length;
+  $("#welcome").innerHTML = `
+    ${first ? `<h2>Добро пожаловать!</h2>
+      <p>Каждое утро приложение собирает скидки на одежду, обувь, сумки и аксессуары в ${Object.keys(DATA.stores).length || "десятках"}
+        магазинов Украины, проверяет, что скидка <b>настоящая</b>, и показывает лучшее под ваши размеры и вкус.
+        Настройте поиск — это займёт минуту. Всё хранится только на вашем телефоне.</p>`
+      : `<h2>Новый профиль</h2><p class="muted">Например, для мужа, дочери или сына — у каждого свои размеры и фильтры.</p>`}
+    <form id="welcome-form">
+      <div class="field"><span class="label">Для кого ищем скидки</span>
+        ${checks("preset", Object.fromEntries(Object.entries(PRESETS).map(([k, v]) => [k, `${v.emoji} ${v.label}`])), [], "radio")}</div>
+      <div class="field"><label>Имя профиля</label><input type="text" name="name" placeholder="например: Я, Аня, Сын"></div>
+      <div class="field"><label>Размеры одежды</label>
+        <input type="text" name="sizes" placeholder="например: S, M, 44  или для детей: 146, 152">
+        <div class="hint">Через запятую. Можно пропустить и заполнить потом в «Настройках».</div></div>
+      <div class="field"><label>Размеры обуви</label><input type="text" name="shoeSizes" placeholder="например: 37, 38"></div>
+      <div class="field"><span class="label">Больше всего интересует</span>${checks("subsFav", SUBS, [])}
+        <div class="hint">Эти вещи будут первыми в подборке и в ежедневном уведомлении.</div></div>
+      <div class="field"><label>Скидка от <b data-out="w-minDiscount">30</b>%</label>
+        <input type="range" name="minDiscount" min="10" max="80" step="5" value="30"></div>
+      <p id="welcome-error" class="bad" hidden>Выберите, для кого ищем скидки.</p>
+      <button class="btn-primary" type="submit">${first ? "Показать скидки" : "Создать профиль"}</button>
+      ${first ? "" : `<div style="height:8px"></div><button type="button" class="btn-secondary" data-view-go="settings">Отмена</button>`}
+    </form>`;
+}
+async function createProfile(form) {
+  const preset = PRESETS[form.elements.preset.value];
+  const first = !S.profiles.length;
+  const { label, ...base } = preset;
+  const p = {
+    ...structuredClone(DEFAULT_PROFILE), ...structuredClone(base), id: "p" + Date.now(),
+    name: form.elements.name.value.trim() || base.name,
+    sizes: form.elements.sizes.value.trim(), shoeSizes: form.elements.shoeSizes.value.trim(),
+    subsFav: [...form.querySelectorAll('[name="subsFav"]:checked')].map(x => x.value),
+    minDiscount: +form.elements.minDiscount.value,
+  };
+  S.profiles.push(p);
+  S.active = p.id;
+  if (first) S.notify = p.id;  // первый профиль сразу получает ежедневное уведомление
+  save();
+  document.body.classList.remove("onboarding");
+  if (first) syncNotify(true);  // запрос разрешения — пока ещё идёт нажатие на кнопку
+  try { await ensureData(); } catch { $("#updated").textContent = "нет связи"; }
+  setProfile(p.id);
+  showView("deals");
 }
 
 // ---------- настройки ----------
@@ -330,31 +439,109 @@ function renderSettings() {
   renderNotify();
 }
 
-// ---------- ежедневное уведомление (считает и показывает само Android-приложение) ----------
-function syncNotify() {
-  if (!bridge) return;
+// ---------- ежедневное уведомление ----------
+// Android-приложение считает и показывает его само; в браузере и на iPhone присылает сервер (scraper/push.py).
+const webPush = () => !bridge && "PushManager" in window && "serviceWorker" in navigator && "Notification" in window;
+function notifyProfile(p) {  // то, что нужно серверу для отбора скидок
+  const keys = ["name", "audience", "stores", "cats", "subsFav", "brandsFav", "brandsHide", "minDiscount", "maxPrice",
+    "hideSuspicious", "onlySize", "sizes", "shoeSizes"];
+  return Object.fromEntries(keys.map(k => [k, p[k]]));
+}
+let pushTimer;
+function syncNotify(now = false) {
   const p = S.profiles.find(x => x.id === S.notify);
-  bridge.setNotify(p ? JSON.stringify(p) : "");
+  if (bridge) { bridge.setNotify(p ? JSON.stringify(p) : ""); return; }
+  if (!webPush() || !PUSH.endpoint) return;
+  clearTimeout(pushTimer);
+  if (now) enablePush();
+  else pushTimer = setTimeout(() => syncPush().catch(() => {}), 1500);
+}
+async function enablePush() {
+  try {
+    if (S.notify && Notification.permission !== "granted" && (await Notification.requestPermission()) !== "granted") {
+      renderNotify();
+      return;
+    }
+    await syncPush();
+  } catch (e) {
+    console.warn("уведомления:", e);
+  }
+  renderNotify();
+}
+async function syncPush() {
+  const p = S.profiles.find(x => x.id === S.notify);
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (p && !sub && Notification.permission === "granted") {
+    const key = Uint8Array.from(atob(PUSH.key.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+  }
+  const body = p && sub ? { id: S.device, subscription: sub.toJSON(), profile: notifyProfile(p) } : { id: S.device };
+  const sig = JSON.stringify(body);
+  if (sig === S.pushSig) return;  // ничего не изменилось — сервер не трогаем
+  const r = await fetch(PUSH.endpoint + "/sub", {
+    method: p && sub ? "POST" : "DELETE", headers: { "Content-Type": "application/json" }, body: sig,
+  });
+  if (r.ok) { S.pushSig = sig; save(); }
 }
 function renderNotify() {
   const el = $("#notify");
-  if (!bridge) {
-    el.innerHTML = /SkidkiApp\//.test(navigator.userAgent)
-      ? `<p>Чтобы каждое утро получать 20 самых горящих скидок, обновите приложение:
-           <a href="install.html">скачайте новую версию</a> и установите поверх старой — настройки и избранное сохранятся.</p>`
-      : `<p>Ежедневные уведомления с горящими скидками приходят в Android-приложении «Скидки для своих». <a href="install.html">Установить</a></p>`;
+  const chooser = () => {
+    const options = [{ id: "", name: "Не присылать", emoji: "🔕" }, ...S.profiles];
+    return `<p>Каждое утро, когда скидки обновятся, придёт уведомление с 20 самыми горящими скидками для выбранного профиля —
+        с учётом размеров, фильтров, «больше всего интересует» и любимых брендов. Уже присланные не повторяются, пока не подешевеют.</p>
+      <div class="field"><span class="label">Присылать на этот телефон для</span>
+        <div class="checks">${options.map(p => `<label class="chip ${S.notify === p.id ? "on" : ""}">
+          <input type="radio" hidden name="notify" value="${esc(p.id)}" ${S.notify === p.id ? "checked" : ""}>${esc(p.emoji)} ${esc(p.name)}</label>`).join("")}</div></div>`;
+  };
+  if (bridge) {
+    el.innerHTML = chooser() +
+      `${S.notify && !bridge.permissionGranted() ? `<p class="bad">Уведомления запрещены в настройках телефона — разрешите их для приложения «Скидки для своих».</p>` : ""}
+      ${S.notify ? `<button type="button" id="notify-test" class="btn-secondary">Прислать сейчас (проверка)</button>` : ""}`;
     return;
   }
-  const options = [{ id: "", name: "Не присылать", emoji: "🔕" }, ...S.profiles];
-  el.innerHTML = `<p>Каждое утро, когда скидки обновятся, телефон пришлёт 20 самых горящих скидок для выбранного профиля —
-      с учётом размеров, фильтров, «больше всего интересует» и любимых брендов. Уже присланные не повторяются, пока не подешевеют.</p>
-    <div class="field"><span class="label">Присылать на этот телефон для</span>
-      <div class="checks">${options.map(p => `<label class="chip ${S.notify === p.id ? "on" : ""}">
-        <input type="radio" hidden name="notify" value="${esc(p.id)}" ${S.notify === p.id ? "checked" : ""}>${esc(p.emoji)} ${esc(p.name)}</label>`).join("")}</div></div>
-    ${S.notify && !bridge.permissionGranted() ? `<p class="bad">Уведомления запрещены в настройках телефона — разрешите их для приложения «Скидки для своих».</p>` : ""}
-    ${S.notify ? `<button type="button" id="notify-test" class="btn-secondary">Прислать сейчас (проверка)</button>` : ""}`;
+  if (/SkidkiApp\//.test(navigator.userAgent)) {
+    el.innerHTML = `<p>Чтобы каждое утро получать 20 самых горящих скидок, обновите приложение:
+      <a href="install.html">скачайте новую версию</a> и установите поверх старой — настройки и избранное сохранятся.</p>`;
+    return;
+  }
+  if (isIOS && !standalone) {
+    el.innerHTML = `<p>На iPhone уведомления работают, когда приложение добавлено на экран «Домой»:</p>
+      <ol><li>Нажмите <b>«Поделиться»</b> <span aria-hidden="true">⬆️</span> внизу Safari.</li>
+      <li>Выберите <b>«На экран „Домой“»</b> → <b>«Добавить»</b>.</li>
+      <li>Откройте «Скидки» с иконки на экране и включите уведомления здесь, в «Настройках».</li></ol>
+      <p class="muted">Нужна iOS 16.4 или новее. Настройки, сделанные в Safari, придётся повторить в приложении с иконки.</p>`;
+    return;
+  }
+  if (!webPush() || !PUSH.endpoint) {
+    el.innerHTML = `<p>Ежедневные уведомления с горящими скидками приходят в приложении для Android
+      (<a href="install.html">установить</a>) и на iPhone — с иконки на экране «Домой».</p>`;
+    return;
+  }
+  const denied = Notification.permission === "denied";
+  el.innerHTML = chooser() +
+    `${S.notify && denied ? `<p class="bad">Уведомления запрещены в настройках браузера или телефона — разрешите их для этого сайта.</p>` : ""}
+    ${S.notify && Notification.permission === "default" ? `<button type="button" id="notify-allow" class="btn-primary">Разрешить уведомления</button><div style="height:8px"></div>` : ""}
+    ${S.notify && Notification.permission === "granted" ? `<button type="button" id="notify-test" class="btn-secondary">Прислать сейчас (проверка)</button>` : ""}`;
 }
 window.renderNotify = renderNotify;  // Android вызывает после ответа на запрос разрешения
+async function testNotify(button) {
+  button.disabled = true;
+  if (bridge) {
+    bridge.sendNow();
+    button.textContent = "Готовлю уведомление — загляните в шторку через минуту";
+    return;
+  }
+  // в браузере проверочное уведомление собираем прямо здесь, по тем же правилам, что и сервер
+  const p = S.profiles.find(x => x.id === S.notify);
+  const hot = pickHot(p);
+  const reg = await navigator.serviceWorker.ready;
+  await reg.showNotification(hot.length ? `${p.name ? p.name + ", с" : "С"}егодня ${hot.length} горящих скидок 🔥` : "Подходящих горящих скидок сегодня нет",
+    { body: hot.slice(0, 3).map(it => `−${it.r}% · ${money(it.p)} · ${it.t}`).join("\n") || "Ослабьте фильтры профиля",
+      icon: "icons/icon-192.png", badge: "icons/icon-192.png", tag: "hot",
+      data: { url: new URL(`./#hot=${hot.map(it => it.id).join(",")}`, location.href).href } });
+  button.textContent = "Уведомление отправлено";
+}
 
 // ---------- горящие скидки из уведомления ----------
 function openHot() {
@@ -376,7 +563,10 @@ window.showHot = csv => {  // приложение уже открыто, а п�
 addEventListener("hashchange", () => {
   if (location.hash.startsWith("#hot=")) window.showHot(decodeURIComponent(location.hash.slice(5)));
 });
-function onSettingsInput(e) {
+navigator.serviceWorker?.addEventListener("message", e => {  // нажатие на уведомление в браузере
+  if (e.data?.hot !== undefined) window.showHot(e.data.hot);
+});
+async function onSettingsInput(e) {
   const card = e.target.closest("[data-pid]");
   if (!card) return;
   const p = S.profiles.find(x => x.id === card.dataset.pid);
@@ -391,6 +581,7 @@ function onSettingsInput(e) {
   if (S.notify === p.id) syncNotify();
   renderProfiles();
   if (S.active === p.id) ui.f = prepareFilter(structuredClone(p));
+  if (e.target.name === "audience") await ensureData().catch(() => {});
 }
 
 // ---------- переключение ----------
@@ -412,6 +603,7 @@ function showView(name) {
   if (name === "favs") renderFavs();
   if (name === "settings") renderSettings();
   if (name === "hot") renderHot();
+  if (name === "welcome") renderWelcome();
   if (name === "deals") render();
   scrollTo(0, 0);
 }
@@ -431,12 +623,8 @@ document.addEventListener("click", e => {
   if (nav) { showView(nav.dataset.view); return; }
   const go = t.closest("[data-view-go]");
   if (go) { showView(go.dataset.viewGo); return; }
-  if (t.id === "notify-test") {
-    bridge.sendNow();
-    t.textContent = "Готовлю уведомление — загляните в шторку через минуту";
-    t.disabled = true;
-    return;
-  }
+  if (t.id === "notify-test") { testNotify(t); return; }
+  if (t.id === "notify-allow") { enablePush(); return; }
   const card = t.closest(".item");
   if (card) { openDetail(card.dataset.id); return; }
   if (t.id === "open-filters" || t.closest("#open-filters")) { openFilters(); return; }
@@ -445,23 +633,37 @@ document.addEventListener("click", e => {
     const p = profile();
     readFields($("#filters form"), p);
     save();
+    if (S.notify === p.id) syncNotify();
     $("#filters").close();
     return;
   }
-  if (t.id === "add-profile") {
-    const id = "p" + Date.now();
-    S.profiles.push({ ...structuredClone(DEFAULT_PROFILE), id, name: "Новый профиль", emoji: "🙂" });
-    save(); renderProfiles(); renderSettings();
-    document.querySelector(`[data-pid="${id}"]`).open = true;
-    return;
-  }
+  if (t.id === "add-profile") { showView("welcome"); return; }
   if (t.dataset.del) {
     if (S.profiles.length <= 1 || !confirm("Удалить профиль?")) return;
     S.profiles = S.profiles.filter(p => p.id !== t.dataset.del);
-    if (S.active === t.dataset.del) S.active = "all";
+    if (S.active === t.dataset.del) S.active = S.profiles[0].id;
     if (S.notify === t.dataset.del) { S.notify = ""; syncNotify(); }
     save(); setProfile(S.active); renderSettings();
   }
+});
+$("#welcome").addEventListener("change", e => {
+  const chip = e.target.closest(".chip");
+  if (!chip) return;
+  if (e.target.type === "radio") {
+    $("#welcome").querySelectorAll(`[name="${e.target.name}"]`).forEach(x => x.closest(".chip").classList.toggle("on", x.checked));
+    const name = $("#welcome-form").elements.name;
+    name.placeholder = PRESETS[e.target.value].name;
+    $("#welcome-error").hidden = true;
+  } else chip.classList.toggle("on", e.target.checked);
+});
+$("#welcome").addEventListener("input", e => {
+  if (e.target.name === "minDiscount") $('[data-out="w-minDiscount"]').textContent = e.target.value;
+});
+$("#welcome").addEventListener("submit", e => {
+  e.preventDefault();
+  const form = e.target;
+  if (!form.elements.preset.value) { $("#welcome-error").hidden = false; return; }
+  createProfile(form);
 });
 $("#filters").addEventListener("input", e => {
   const form = $("#filters form");
@@ -470,6 +672,10 @@ $("#filters").addEventListener("input", e => {
   if (e.target.closest(".chip")) e.target.closest(".chip").classList.toggle("on", e.target.checked);
   const out = form.querySelector('[data-out="flt-minDiscount"]');
   if (out) out.textContent = ui.f.minDiscount;
+  if (e.target.name === "audience") {
+    ensureData([...S.profiles, ui.f]).then(render, () => {});
+    return;
+  }
   render();
 });
 for (const d of document.querySelectorAll("dialog.sheet"))  // тап по затемнению закрывает шторку
@@ -478,7 +684,7 @@ $("#notify").addEventListener("change", e => {
   if (e.target.name !== "notify") return;
   S.notify = e.target.value;
   save();
-  syncNotify();
+  syncNotify(true);
   renderNotify();
 });
 $("#settings").addEventListener("input", onSettingsInput);
@@ -496,24 +702,36 @@ new IntersectionObserver(es => { if (es[0].isIntersecting && ui.shown < ui.list.
 window.appBack = () => {
   const open = document.querySelector("dialog[open]");
   if (open) { open.close(); return true; }
+  if (!S.profiles.length) return false;
   if (!$("#view-deals").classList.contains("active")) { showView("deals"); return true; }
   return false;
 };
 
 // ---------- запуск ----------
 async function load() {
+  PUSH = await fetchJson("push.json").catch(() => ({}));
   try {
-    const r = await fetch("data/deals.json", { cache: "no-cache" });
-    DATA = await r.json();
+    DATA = { ...(await fetchJson("data/meta.json")), items: [] };
   } catch {
-    $("#updated").textContent = "нет связи";
+    try {  // данные ещё в старом формате — одним файлом
+      DATA = await fetchJson("data/deals.json");
+      wholeFile = true;
+      byId = new Map(DATA.items.map(it => [it.id, it]));
+    } catch {
+      $("#updated").textContent = "нет связи";
+    }
   }
-  byId = new Map(DATA.items.map(it => [it.id, it]));
   if (DATA.generated) {
     const d = new Date(DATA.generated);
     $("#updated").textContent = "обновлено " + d.toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   }
-  setProfile(S.active);
+  if (!S.profiles.length) {  // первый запуск — сначала настройка
+    document.body.classList.add("onboarding");
+    showView("welcome");
+    return;
+  }
+  try { await ensureData(); } catch { $("#updated").textContent = "нет связи"; }
+  setProfile(S.profiles.some(p => p.id === S.active) || S.active === "all" ? S.active : S.profiles[0].id);
   syncNotify();  // после обновления приложения расписание уведомлений включится само
   if (pendingHot) openHot();
 }

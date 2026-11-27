@@ -1,4 +1,4 @@
-"""Раскладывает товары по категориям и определяет, для кого товар (женщины / девочки).
+"""Раскладывает товары по категориям и определяет, для кого товар (женщины, мужчины, девочки, мальчики).
 
 Магазины называют одно и то же по-разному, поэтому ищем корни слов на украинском,
 русском и английском в названии товара и в пути раздела магазина.
@@ -8,7 +8,7 @@ import re
 # (категория, подкатегория, корни слов). Порядок важен: первая подходящая строка выигрывает,
 # поэтому «специфичные» вещи (купальник, пижама) стоят выше общих (костюм, топ).
 RULES = [
-    ("shoes", "sneakers", "кросівк кроссовк кеди кеды сліпон слипон sneaker trainer"),
+    ("shoes", "sneakers", "кросівк кроссовк кеди кеды сліпон слипон бутс sneaker trainer"),
     ("shoes", "boots", "черевик ботинк чобіт чоботи сапог ботильйон ботильон ботфорт угг дутик челсі челси boot"),
     ("shoes", "slippers", "тапоч тапк шльопанц шлепанц сланц крокс в'єтнамк вьетнамк slipper"),
     ("shoes", "shoes", "туфл балетк лофер мокасин босоніжк босоножк сандал мюлі мюли еспадрил эспадрил"),
@@ -27,6 +27,8 @@ RULES = [
      "сережк серьг браслет намист колье кольє резинк заколк обруч пов'язк повязк хустк платок годинник часы парасол зонт"),
 ]
 _RULES = [(c, s, re.compile("|".join(re.escape(w) for w in words.split()), re.I)) for c, s, words in RULES]
+# У спортивных брендов название — это модель («RC56»), а раздел только общий («Взуття|Для бігу»)
+_GENERIC = [("shoes", "sneakers", re.compile(r"взутт|обувь|footwear|\bshoes\b", re.I))]
 
 # Не одежда/обувь — такие товары не показываем вовсе
 SKIP = re.compile(r"тарілк|тарелк|чашк|подушк|ковдр|одеял|постіль|постел|свічк|свеч|іграшк|игрушк|"
@@ -36,7 +38,7 @@ SKIP = re.compile(r"тарілк|тарелк|чашк|подушк|ковдр|�
 WOMEN = re.compile(r"жіноч|женск|для жінок|для женщин|жінкам|\bwomen|\bwoman|\bwmns|\bw\b", re.I)
 GIRLS = re.compile(r"дівчат|дівчинк|девоч|для дівч|\bgirl|дитяч.*дівч|teen girl|preteen", re.I)
 MEN = re.compile(r"чоловіч|мужск|для чоловіків|для мужчин|\bmen'?s?\b|\bman\b", re.I)
-BOYS = re.compile(r"хлопчик|мальчик|\bboys?\b", re.I)
+BOYS = re.compile(r"хлопчик|хлопчач|для хлопц|мальчик|\bboys?\b", re.I)
 BABY = re.compile(r"немовл|новонарод|0-2|0-24|\bbaby\b|малюк", re.I)
 KIDS = re.compile(r"дитяч|детск|\bkids?\b|junior|\bjr\b", re.I)
 
@@ -72,25 +74,29 @@ def categorize(title: str, path: str) -> tuple[str, str] | None:
         for cat, sub, rx in _RULES:
             if rx.search(source):
                 return cat, sub
+    for cat, sub, rx in _GENERIC:
+        if rx.search(path):
+            return cat, sub
     return None
 
 
 def audience(hint: str, title: str, path: str) -> str | None:
-    """women | girls | kids (детское без пола) | unisex,
-    либо None если товар не для наших девочек (мужское, мальчики, младенцы)."""
+    """women | men | girls | boys | kids (детское без пола) | unisex, либо None для младенческих товаров."""
     text = f"{title} | {path}"
-    if hint in ("men", "boys") or BABY.search(text):
+    if BABY.search(text):
         return None
     if hint == "girls" or GIRLS.search(text):
         return "girls"
+    if hint == "boys" or BOYS.search(text):
+        return "boys"
     if hint == "women" or WOMEN.search(text):
         return "women"
-    if MEN.search(text) or BOYS.search(text):
-        return None
+    if hint == "men" or MEN.search(text):
+        return "men"
     if hint == "kids" or KIDS.search(text):  # магазин без детского раздела, но в названии «дитячі … Kids»
         if GIRLISH.search(title):
             return "girls"
         if BOYISH.search(text):
-            return None
+            return "boys"
         return "kids"
     return "unisex"

@@ -1,2 +1,6 @@
 httpx>=0.27
 truststore>=0.9
+# уведомления в браузере и на iPhone (scraper/push.py)
+pywebpush>=2.0
+cryptography>=42
+tzdata

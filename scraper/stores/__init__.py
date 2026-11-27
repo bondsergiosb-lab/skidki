@@ -1,8 +1,9 @@
 """Список подключённых магазинов: id → (название, сайт, функция сбора).
 
-Чтобы добавить магазин: напишите модуль с функцией scrape(http), которая отдаёт Item, и впишите его сюда.
+Чтобы добавить магазин: напишите модуль с функцией scrape(http), которая отдаёт Item, и впишите его сюда,
+или опишите карточки товаров настройками в shops.py.
 """
-from . import gepur, kasta, lcw, lpp, megasport, prom, puma, rozetka, vovk
+from . import gepur, kasta, lcw, lpp, megasport, prom, puma, shops, vovk
 
 STORES = {
     "megasport": (megasport.NAME, megasport.SITE, megasport.scrape),
@@ -13,9 +14,9 @@ STORES = {
     "house": ("House", "https://www.housebrand.com/ua/uk/", lpp.HOUSE),
     "mohito": ("Mohito", "https://www.mohito.com/ua/uk/", lpp.MOHITO),
     "kasta": (kasta.NAME, kasta.SITE, kasta.scrape),
-    "rozetka": (rozetka.NAME, rozetka.SITE, rozetka.scrape),
     "prom": (prom.NAME, prom.SITE, prom.scrape),
     "gepur": (gepur.NAME, gepur.SITE, gepur.scrape),
     "vovk": (vovk.NAME, vovk.SITE, vovk.scrape),
     "puma": (puma.NAME, puma.SITE, puma.scrape),
+    **{s.store: (s.name, s.site, s.scrape) for s in shops.SHOPS},
 }
